@@ -1,43 +1,14 @@
-definition (
-  name: 'Lock User',
-  namespace: 'ethayer',
-  author: 'Erik Thayer',
-  description: 'App to manage users. This is a child app.',
-  category: 'Safety & Security',
-
-  parent: 'ethayer:Lock Manager',
-  iconUrl: 'https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience.png',
-  iconX2Url: 'https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png',
-  iconX3Url: 'https://s3.amazonaws.com/smartapp-icons/Convenience/Cat-Convenience@2x.png'
-)
-import groovy.json.JsonSlurper
-import groovy.json.JsonBuilder
-
-preferences {
-  page name: 'landingPage'
-  page name: 'setupPage'
-  page name: 'mainPage'
-  page name: 'lockPage', title: 'Manage Lock', install: false, uninstall: false
-  page name: 'schedulingPage', title: 'Schedule User', install: false, uninstall: false
-  page name: 'calendarPage', title: 'Calendar', install: false, uninstall: false
-  page name: 'notificationPage'
-  page name: 'reEnableUserLockPage'
-  page name: 'lockResetPage'
-  page name: 'keypadPage'
-  page name: 'askAlexaPage'
-}
-
-def installed() {
+def userInstalled() {
   log.debug "Installed with settings: ${settings}"
-  initialize()
+  userInitialize()
 }
 
-def updated() {
+def userUpdated() {
   log.debug "Updated with settings: ${settings}"
-  initialize()
+  userInitialize()
 }
 
-def initialize() {
+def userInitialize() {
   // reset listeners
   unsubscribe()
   unschedule()
@@ -47,11 +18,10 @@ def initialize() {
   initializeLocks()
 
   // set listeners
-  subscribe(location, locationHandler)
   subscribeToSchedule()
 }
 
-def uninstalled() {
+def userUninstalled() {
   unschedule()
 
   // prompt locks to delete this user
@@ -130,31 +100,34 @@ def incrementLockUsage(lockId) {
 def lockReset(lockId) {
   state."lock${lockId}".enabled = true
   state."lock${lockId}".disabledReason = ''
-  def lockApp = getLockApp(lockId)
+  def lockApp = parent.getLockAppById(lockId)
   lockApp.enableUser(userSlot)
 }
 
-def landingPage() {
+def userLandingPage() {
   if (userName) {
-    mainPage()
+    userMainPage()
   } else {
-    setupPage()
+    userSetupPage()
   }
 }
 
-def setupPage() {
-  dynamicPage(name: 'setupPage', title: 'Setup Lock', nextPage: 'mainPage', uninstall: true) {
-    section('Choose devices for this lock') {
-      input(name: 'userName', title: 'Name for User', required: true, image: 'https://images.lockmanager.io/app/v1/images/user.png')
+def userSetupPage() {
+  dynamicPage(name: 'userSetupPage', title: 'Setup Lock', nextPage: 'userMainPage', uninstall: true) {
+    section('User App Label') {
+      label(title: "Name for App", required: true, image: 'http://images.lockmanager.io/app/v1/images/user.png')
+    }
+    section('Choose details for this user') {
+      input(name: 'userName', type: 'text', title: 'Name for User', required: true)
       input(name: 'userCode', type: 'text', title: userCodeInputTitle(), required: false, defaultValue: settings.'userCode', refreshAfterSelection: true)
       input(name: 'userSlot', type: 'enum', options: parent.availableSlots(settings.userSlot), title: 'Select slot', required: true, refreshAfterSelection: true )
     }
   }
 }
 
-def mainPage() {
+def userMainPage() {
   //reset errors on each load
-  dynamicPage(name: 'mainPage', title: '', install: true, uninstall: true) {
+  dynamicPage(name: 'userMainPage', title: '', install: true, uninstall: true) {
     section('User Settings') {
       def usage = getAllLocksUsage()
       def text
@@ -171,30 +144,29 @@ def mainPage() {
       def actions = location.helloHome?.getPhrases()*.label
       if (actions) {
         actions.sort()
-        input name: 'userUnlockPhrase', type: 'enum', title: 'Hello Home Phrase on unlock', multiple: true, required: false, options: actions, refreshAfterSelection: true, image: 'https://images.lockmanager.io/app/v1/images/home.png'
-        input name: 'userLockPhrase', type: 'enum', title: 'Hello Home Phrase on lock', description: 'Available on select locks only', multiple: true, required: false, options: actions, refreshAfterSelection: true, image: 'https://images.lockmanager.io/app/v1/images/home.png'
+        input name: 'userUnlockPhrase', type: 'enum', title: 'Hello Home Phrase on unlock', multiple: true, required: false, options: actions, refreshAfterSelection: true, image: 'http://images.lockmanager.io/app/v1/images/home.png'
+        input name: 'userLockPhrase', type: 'enum', title: 'Hello Home Phrase on lock', description: 'Available on select locks only', multiple: true, required: false, options: actions, refreshAfterSelection: true, image: 'http://images.lockmanager.io/app/v1/images/home.png'
 
         input "userNoRunPresence", "capability.presenceSensor", title: "DO NOT run Actions if any of these are present:", multiple: true, required: false
         input "userDoRunPresence", "capability.presenceSensor", title: "ONLY run Actions if any of these are present:", multiple: true, required: false
       }
-      input(name: 'burnAfterInt', title: 'How many uses before burn?', type: 'number', required: false, description: 'Blank or zero is infinite', image: 'https://images.lockmanager.io/app/v1/images/fire.png')
-      href(name: 'toSchedulingPage', page: 'schedulingPage', title: 'Schedule (optional)', description: schedulingHrefDescription(), state: schedulingHrefDescription() ? 'complete' : '', image: 'https://images.lockmanager.io/app/v1/images/calendar.png')
-      href(name: 'toNotificationPage', page: 'notificationPage', title: 'Notification Settings', description: notificationPageDescription(), state: notificationPageDescription() ? 'complete' : '', image: 'https://images.lockmanager.io/app/v1/images/bullhorn.png')
-      href(name: 'toKeypadPage', page: 'keypadPage', title: 'Keypad Routines (optional)', image: 'https://images.lockmanager.io/app/v1/images/keypad.png')
+      input(name: 'burnAfterInt', title: 'How many uses before burn?', type: 'number', required: false, description: 'Blank or zero is infinite', image: 'http://images.lockmanager.io/app/v1/images/fire.png')
+      href(name: 'toSchedulingPage', page: 'schedulingPage', title: 'Schedule (optional)', description: schedulingHrefDescription(), state: schedulingHrefDescription() ? 'complete' : '', image: 'http://images.lockmanager.io/app/v1/images/calendar.png')
+      href(name: 'toNotificationPage', page: 'userNotificationPage', title: 'Notification Settings', description: userNotificationPageDescription(), state: userNotificationPageDescription() ? 'complete' : '', image: 'http://images.lockmanager.io/app/v1/images/bullhorn.png')
+      href(name: 'toUserKeypadPage', page: 'userKeypadPage', title: 'Keypad Routines (optional)', image: 'http://images.lockmanager.io/app/v1/images/keypad.png')
     }
     section('Locks') {
       initializeLockData()
       def lockApps = parent.getLockApps()
 
       lockApps.each { app ->
-        href(name: "toLockPage${app.lock.id}", page: 'lockPage', params: [id: app.lock.id], description: lockPageDescription(app.lock.id), required: false, title: app.lock.label, image: lockPageImage(app.lock) )
+        href(name: "toLockPage${app.lock.id}", page: 'userLockPage', params: [id: app.lock.id], description: lockPageDescription(app.lock.id), required: false, title: app.lock.label, image: lockPageImage(app.lock) )
       }
     }
     section('Setup', hideable: true, hidden: true) {
-      label(title: "Name for App", defaultValue: 'User: ' + userName, required: true, image: 'https://images.lockmanager.io/app/v1/images/user.png')
-      input name: 'userName', title: "Name for user", required: true, image: 'https://images.lockmanager.io/app/v1/images/user.png'
+      label(title: "Name for App", defaultValue: 'User: ' + userName, required: true, image: 'http://images.lockmanager.io/app/v1/images/user.png')
+      input name: 'userName', type: "text", title: "Name for user", required: true, image: 'http://images.lockmanager.io/app/v1/images/user.png'
       input(name: "userSlot", type: "enum", options: parent.availableSlots(settings.userSlot), title: "Select slot", required: true, refreshAfterSelection: true )
-      paragraph 'Lock Manager © 2017 v1.4'
     }
   }
 }
@@ -214,26 +186,25 @@ def userCodeInputTitle() {
 
 def lockPageImage(lock) {
   if (!state."lock${lock.id}".enabled || settings."lockDisabled${lock.id}") {
-    return 'https://images.lockmanager.io/app/v1/images/ban.png'
+    return 'http://images.lockmanager.io/app/v1/images/ban.png'
   } else {
-    return 'https://images.lockmanager.io/app/v1/images/lock.png'
+    return 'http://images.lockmanager.io/app/v1/images/lock.png'
   }
 }
 
 def lockInfoPageImage(lock) {
   if (!state."lock${lock.id}".enabled || settings."lockDisabled${lock.id}") {
-    return 'https://images.lockmanager.io/app/v1/images/user-times.png'
+    return 'http://images.lockmanager.io/app/v1/images/user-times.png'
   } else {
-    return 'https://images.lockmanager.io/app/v1/images/user.png'
+    return 'http://images.lockmanager.io/app/v1/images/user.png'
   }
 }
 
-def lockPage(params) {
-  dynamicPage(name:"lockPage", title:"Lock Settings") {
+def userLockPage(params) {
+  dynamicPage(name:"userLockPage", title:"Lock Settings") {
     debugger('current params: ' + params)
     def lock = getLock(params)
-    def lockApp = getLockApp(lock.id)
-    log.debug lockApp
+    def lockApp = parent.getLockAppById(lock.id)
     def slotData = lockApp.slotData(userSlot)
 
     def usage = state."lock${lock.id}".usage
@@ -242,8 +213,8 @@ def lockPage(params) {
 
     if (!state."lock${lock.id}".enabled) {
       section {
-        paragraph "WARNING:\n\nThis user has been disabled.\nReason: ${state."lock${lock.id}".disabledReason}", image: 'https://images.lockmanager.io/app/v1/images/ban.png'
-        href(name: 'toReEnableUserLockPage', page: 'reEnableUserLockPage', title: 'Reset User', description: 'Retry setting this user.',  params: [id: lock.id], image: 'https://images.lockmanager.io/app/v1/images/refresh.png' )
+        paragraph "WARNING:\n\nThis user has been disabled.\n${state."lock${lock.id}".disabledReason}", image: 'http://images.lockmanager.io/app/v1/images/ban.png'
+        href(name: 'toReEnableUserLockPage', page: 'reEnableUserLockPage', title: 'Reset User', description: 'Retry setting this user.',  params: [id: lock.id], image: 'http://images.lockmanager.io/app/v1/images/refresh.png' )
       }
     }
     section("${deviceLabel(lock)} settings for ${app.label}") {
@@ -254,14 +225,14 @@ def lockPage(params) {
       if(slotData.attempts > 0) {
         paragraph "Lock set failed try ${slotData.attempts}/10"
       }
-      input(name: "lockDisabled${lock.id}", type: 'bool', title: 'Disable lock for this user?', required: false, defaultValue: settings."lockDisabled${lock.id}", refreshAfterSelection: true, image: 'https://images.lockmanager.io/app/v1/images/ban.png' )
-      href(name: 'toLockResetPage', page: 'lockResetPage', title: 'Reset Lock', description: 'Reset lock data for this user.',  params: [id: lock.id], image: 'https://images.lockmanager.io/app/v1/images/refresh.png' )
+      input(name: "lockDisabled${lock.id}", type: 'bool', title: 'Disable lock for this user?', required: false, defaultValue: settings."lockDisabled${lock.id}", refreshAfterSelection: true, image: 'http://images.lockmanager.io/app/v1/images/ban.png' )
+      href(name: 'toLockResetPage', page: 'lockResetPage', title: 'Reset Lock', description: 'Reset lock data for this user.',  params: [id: lock.id], image: 'http://images.lockmanager.io/app/v1/images/refresh.png' )
     }
   }
 }
 
-def keypadPage() {
-  dynamicPage(name: 'keypadPage',title: 'Keypad Settings (optional)', install: true, uninstall: true) {
+def userKeypadPage() {
+  dynamicPage(name: 'userKeypadPage',title: 'Keypad Settings (optional)', install: true, uninstall: true) {
     def actions = location.helloHome?.getPhrases()*.label
     actions?.sort()
     section("Settings") {
@@ -296,7 +267,7 @@ def reEnableUserLockPage(params) {
       paragraph 'Lock has been reset.'
     }
     section {
-      href(name: 'toMainPage', title: 'Back To Setup', page: 'mainPage')
+      href(name: 'toMainPage', title: 'Back To Setup', page: 'userMainPage')
     }
   }
 }
@@ -313,7 +284,7 @@ def lockResetPage(params) {
       paragraph 'Lock has been reset.'
     }
     section {
-      href(name: 'toMainPage', title: 'Back To Setup', page: 'mainPage')
+      href(name: 'toMainPage', title: 'Back To Setup', page: 'userMainPage')
     }
   }
 }
@@ -329,7 +300,7 @@ def schedulingPage() {
       input(name: 'days', type: 'enum', title: 'Allow User Access On These Days', description: 'Every day', required: false, multiple: true, options: ['Monday', 'Tuesday', 'Wednesday', 'Thursday', 'Friday', 'Saturday', 'Sunday'], submitOnChange: true)
     }
     section {
-      input(name: 'modeStart', title: 'Allow Access only when in this mode', type: 'mode', required: false, mutliple: false, submitOnChange: true)
+      input(name: 'activeModes', title: 'Allow Access only when in any of these modes', type: 'mode', required: false, multiple: true, submitOnChange: true)
     }
     section {
       input(name: 'startTime', type: 'time', title: 'Start Time', description: null, required: false)
@@ -367,26 +338,26 @@ def calendarPage() {
   }
 }
 
-def notificationPage() {
-  dynamicPage(name: 'notificationPage', title: 'Notification Settings') {
+def userNotificationPage() {
+  dynamicPage(name: 'userNotificationPage', title: 'Notification Settings') {
 
     section {
       if (phone == null && !notification && !recipients) {
-        input(name: 'muteUser', title: 'Mute this user?', type: 'bool', required: false, submitOnChange: true, defaultValue: false, description: 'Mute notifications for this user if notifications are set globally', image: 'https://images.lockmanager.io/app/v1/images/bell-slash-o.png')
+        input(name: 'muteUser', title: 'Mute this user?', type: 'bool', required: false, submitOnChange: true, defaultValue: false, description: 'Mute notifications for this user if notifications are set globally', image: 'http://images.lockmanager.io/app/v1/images/bell-slash-o.png')
       }
       if (!muteUser) {
-        input('recipients', 'contact', title: 'Send notifications to', submitOnChange: true, required: false, multiple: true, image: 'https://images.lockmanager.io/app/v1/images/book.png')
-        href(name: 'toAskAlexaPage', title: 'Ask Alexa', page: 'askAlexaPage', image: 'https://images.lockmanager.io/app/v1/images/Alexa.png')
+        input('recipients', 'contact', title: 'Send notifications to', submitOnChange: true, required: false, multiple: true, image: 'http://images.lockmanager.io/app/v1/images/book.png')
+        href(name: 'toAskAlexaPage', title: 'Ask Alexa', page: 'userAskAlexaPage', image: 'http://images.lockmanager.io/app/v1/images/Alexa.png')
         if (!recipients) {
           input(name: 'phone', type: 'text', title: 'Text This Number', description: 'Phone number', required: false, submitOnChange: true)
           paragraph 'For multiple SMS recipients, separate phone numbers with a semicolon(;)'
           input(name: 'notification', type: 'bool', title: 'Send A Push Notification', description: 'Notification', required: false, submitOnChange: true)
         }
         if (phone != null || notification || recipients) {
-          input(name: 'notifyAccess', title: 'on User Entry', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/unlock-alt.png')
-          input(name: 'notifyLock', title: 'on Lock', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/lock.png')
-          input(name: 'notifyAccessStart', title: 'when granting access', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/check-circle-o.png')
-          input(name: 'notifyAccessEnd', title: 'when revoking access', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/times-circle-o.png')
+          input(name: 'notifyAccess', title: 'on User Entry', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/unlock-alt.png')
+          input(name: 'notifyLock', title: 'on Lock', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/lock.png')
+          input(name: 'notifyAccessStart', title: 'when granting access', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/check-circle-o.png')
+          input(name: 'notifyAccessEnd', title: 'when revoking access', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/times-circle-o.png')
         }
       }
     }
@@ -399,13 +370,13 @@ def notificationPage() {
   }
 }
 
-def askAlexaPage() {
-  dynamicPage(name: 'askAlexaPage', title: 'Ask Alexa Message Settings') {
+def userAskAlexaPage() {
+  dynamicPage(name: 'userAskAlexaPage', title: 'Ask Alexa Message Settings') {
     section('Que Messages with the Ask Alexa app') {
-      input(name: 'alexaAccess', title: 'on User Entry', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/unlock-alt.png')
-      input(name: 'alexaLock', title: 'on Lock', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/lock.png')
-      input(name: 'alexaAccessStart', title: 'when granting access', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/check-circle-o.png')
-      input(name: 'alexaAccessEnd', title: 'when revoking access', type: 'bool', required: false, image: 'https://images.lockmanager.io/app/v1/images/times-circle-o.png')
+      input(name: 'alexaAccess', title: 'on User Entry', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/unlock-alt.png')
+      input(name: 'alexaLock', title: 'on Lock', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/lock.png')
+      input(name: 'alexaAccessStart', title: 'when granting access', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/check-circle-o.png')
+      input(name: 'alexaAccessEnd', title: 'when revoking access', type: 'bool', required: false, image: 'http://images.lockmanager.io/app/v1/images/times-circle-o.png')
     }
     section('Only During These Times (optional)') {
       input(name: 'alexaStartTime', type: 'time', title: 'Notify Starting At This Time', description: null, required: false)
@@ -437,6 +408,11 @@ def readableDateTime(date) {
   new Date().parse(smartThingsDateFormat(), date.format(smartThingsDateFormat(), timeZone())).format("EEE, MMM d yyyy 'at' h:mma", timeZone())
 }
 
+
+def getLockUsage(lock_id) {
+  return state."lock${lock_id}".usage
+}
+
 def getAllLocksUsage() {
   def usage = 0
   def lockApps = parent.getLockApps()
@@ -464,7 +440,7 @@ def calendarHrefDescription() {
   }
 }
 
-def notificationPageDescription() {
+def userNotificationPageDescription() {
   def parts = []
   def msg = ''
   if (settings.phone) {
@@ -513,23 +489,6 @@ def deviceLabel(device) {
   return device.label ?: device.name
 }
 
-def fancyString(listOfStrings) {
-  listOfStrings.removeAll([null])
-  def fancify = { list ->
-    return list.collect {
-      def label = it
-      if (list.size() > 1 && it == list[-1]) {
-        label = "and ${label}"
-      }
-      label
-    }.join(", ")
-  }
-  if (listOfStrings) {
-    return fancify(listOfStrings)
-  }
-}
-
-
 def schedulingHrefDescription() {
   def descriptionParts = []
   if (startDateTime() || endDateTime()) {
@@ -538,7 +497,7 @@ def schedulingHrefDescription() {
   if (days) {
     descriptionParts << "On ${fancyString(days)},"
   }
-  if ((andOrTime != null) || (modeStart == null)) {
+  if ((andOrTime != null) || (activeModes == null)) {
     if (startTime) {
       descriptionParts << "at ${humanReadableStartDate()}"
     }
@@ -546,8 +505,8 @@ def schedulingHrefDescription() {
       descriptionParts << "until ${humanReadableEndDate()}"
     }
   }
-  if (modeStart) {
-    descriptionParts << "and when ${location.name} enters '${modeStart}' mode"
+  if (activeModes) {
+    descriptionParts << "and when ${location.name} enters any of '${activeModes}' modes"
   }
   if (descriptionParts.size() <= 1) {
     // locks will be in the list no matter what. No rules are set if only locks are in the list
@@ -651,7 +610,6 @@ def isCorrectDay() {
   return false
 }
 
-
 def isInCalendarRange() {
   def dateStart = startDateTime()
   def dateEnd = endDateTime()
@@ -690,10 +648,10 @@ def isInCalendarRange() {
 }
 
 def isCorrectMode() {
-  if (modeStart) {
+  if (activeModes) {
     // mode check is on
-    if (location.mode == modeStart) {
-      // we're in the right one mode
+    if (activeModes.contains(location.mode)) {
+      // we're in a right mode
       return true
     } else {
       // we're in the wrong mode
@@ -774,17 +732,6 @@ def getLockById(params) {
   return parent.locks.find{it.id == id}
 }
 
-def getLockApp(lockId) {
-  def lockApp = false
-  def lockApps = parent.getLockApps()
-  lockApps.each { app ->
-    if (app.lock.id == lockId) {
-      lockApp = app
-    }
-  }
-  return lockApp
-}
-
 def getLock(params) {
   def id = ''
   // Assign params to id.  Sometimes parameters are double nested.
@@ -795,9 +742,9 @@ def getLock(params) {
   } else if (params?.params){
     id = params.params.id
   }
-  def lockApp = getLockApp(id)
+  def lockApp = parent.getLockAppById(id)
   if (!lockApp) {
-    lockApp = getLockApp(state.lastLock)
+    lockApp = parent.getLockAppById(state.lastLock)
   }
 
   if (lockApp) {
@@ -817,7 +764,7 @@ def userNotificationSettings() {
   return userSettings
 }
 
-def send(msg) {
+def sendUserMessage(msg) {
   if (userNotificationSettings()) {
     checkIfNotifyUser(msg)
   } else {
@@ -897,6 +844,11 @@ def sendMessageViaUser(msg) {
   }
 }
 
+def disableAndSetReason(lockID, reason) {
+  state."lock${lockID}".enabled = false
+  state."lock${lockID}".disabledReason = reason
+}
+
 def disableLock(lockID) {
   state."lock${lockID}".enabled = false
   state."lock${lockID}".disabledReason = 'Controller failed to set user code.'
@@ -905,6 +857,10 @@ def disableLock(lockID) {
 def enableLock(lockID) {
   state."lock${lockID}".enabled = true
   state."lock${lockID}".disabledReason = null
+}
+
+def disabledReason() {
+  state."lock${lockID}".disabledReason
 }
 
 def getLockUserInfo(lock) {
@@ -932,7 +888,7 @@ def userAlexaSettings() {
   return false
 }
 
-def askAlexa(msg) {
+def askAlexaUser(msg) {
   if (userAlexaSettings()) {
     checkIfAlexaUser(msg)
   } else {
@@ -947,10 +903,10 @@ def checkIfAlexaUser(message) {
       def stop = timeToday(alexaEndTime)
       def now = new Date()
       if (start.before(now) && stop.after(now)){
-        sendAskAlexa(message)
+        sendAskAlexaUser(message)
       }
     } else {
-      sendAskAlexa(message)
+      sendAskAlexaUser(message)
     }
   }
 }
@@ -961,50 +917,17 @@ def checkIfAlexaGlobal(message) {
     def stop = timeToday(parent.alexaEndTime)
     def now = new Date()
     if (start.before(now) && stop.after(now)){
-      sendAskAlexa(message)
+      sendAskAlexaUser(message)
     }
   } else {
-    sendAskAlexa(message)
+    sendAskAlexaUser(message)
   }
 }
 
-def sendAskAlexa(message) {
+def sendAskAlexaUser(message) {
   sendLocationEvent(name: 'AskAlexaMsgQueue',
                     value: 'LockManager/User',
                     isStateChange: true,
                     descriptionText: message,
                     unit: "User//${userName}")
-}
-
-private anyoneHome(sensors) {
-  def result = false
-  if(sensors.findAll { it?.currentPresence == "present" }) {
-    result = true
-  }
-  result
-}
-
-def executeHelloPresenceCheck(routines) {
-  if (userNoRunPresence && userDoRunPresence == null) {
-    if (!anyoneHome(userNoRunPresence)) {
-      location.helloHome.execute(routines)
-    }
-  } else if (userDoRunPresence && userNoRunPresence == null) {
-    if (anyoneHome(userDoRunPresence)) {
-      location.helloHome.execute(routines)
-    }
-  } else if (userDoRunPresence && userNoRunPresence) {
-    if (anyoneHome(userDoRunPresence) && !anyoneHome(userNoRunPresence)) {
-      location.helloHome.execute(routines)
-    }
-  } else {
-    location.helloHome.execute(routines)
-  }
-}
-
-def debugger(message) {
-  def doDebugger = parent.debuggerOn()
-  if (doDebugger) {
-    log.debug(message)
-  }
 }
